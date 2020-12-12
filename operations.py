@@ -1,16 +1,33 @@
 import discord
 import uuid
 import argparse
+import math
 
 class Operator:
     def __init__(self, local, config):
         self.local  = local
         self.config = config
         self.locations = []
-        self.query_types = ["name", "author"] # List of valid query vars for getting a location
+
+        # List of valid query vars for getting a location
+        self.query_types = ["name", "author"]
+
+        # Dictionary to store metrics for things
+        self.metrics =  {   "speed" : 
+                                        # Speed of different entities in different modes in blocks/sec
+                                        {
+                                            "player" :  {
+                                                            "walk"  : 4.317,
+                                                            "run"   : 5.612
+                                                        },
+                                            "horse" :   {
+                                                            "walk"  : 9.0
+                                                        }
+                                        }
+                        }
 
     # Function to add location data to a list or to a database
-    def add_location(self, name, user, x, y, z=None, desc=None):
+    def add_location(self, name, user, x, y, z=None, desc=None, server=None):
         """Function to add a set of location data to the locations list of the database
         """
         # Saving to local memory in a list
@@ -21,7 +38,8 @@ class Operator:
                                 "name" : name,
                                 "author" : {"name" : user.name.split("#")[0], "discord_name" : user.name, "discord_id" : user.id},
                                 "coords" : { "x" : int(x), "y" : int(y), "z" : z },
-                                "desc" : desc
+                                "desc" : desc, 
+                                "server" : server
                             }
 
             # save the new location in the locations list
@@ -80,6 +98,31 @@ class Operator:
 
         return searched_location_data
     
+    # Function to search for locations based on search token and query type
+    def search_locations(self, search_token, query="name"):
+        # Handle case of unsupported query data
+        if query not in self.query_types:
+            print("Unsupported query type {}, supported query types are {}".format(query, ",".join(self.query_types)))
+            return False
+
+        found_locations = []
+
+        # Traverse all location entries to search for the proper location
+        for entry in self.locations:
+            # Case for serach by location name
+            if query == "name":
+                # Soft search, check if search key appears in location name 
+                if search_token in entry["name"]:
+                    found_locations.append(entry)
+
+            # Case for search by users name
+            elif query == "author":
+                # Strict search, search key must be identical to current author name
+                if search_token == entry["author"]["name"]:
+                    found_locations.append(entry)
+        
+        return found_locations
+
     # Function to create string of location data in a nice format
     def location_str(self, location):
         str = "Name: {}\n".format(location["name"])
@@ -131,17 +174,76 @@ class Operator:
             str += self.short_location_str(entry) + "\n"
 
         return str
-
+    
     # Function to return a list of locations stored within an embed
-    def location_list_embed(self):
+    def location_list_embed(self, collection=None, search_token=None, query=None):
+        # If no location list was provided, use the entire location list
+        if collection is None:
+            collection = self.locations
+            desc = "List of all registered locations..."
+        else:
+            desc = "Search results for {}: '{}'".format(query, search_token)
+        
         embed = discord.Embed(
             title = "Locations",
-            description = "List of all registered locations...",
+            description = desc,
             color = discord.Color.green()
         )
 
         # Traverse each location entry and create new embed field to add into list
-        for entry in self.locations:
+        for entry in collection:
             embed.add_field(name=entry["name"], value="{}, {}".format(entry["coords"]["x"], entry["coords"]["y"]), inline=False)
+
+        if len(collection) == 0:
+            embed.add_field(name="No locations found...", value="...", inline=False)
+
+        return embed
+
+    # Function to calculate the distance between two given location points
+    def distance(self, name1, name2):
+        # Retrieve both locations
+        loc1 = self.get_location_data(name1)
+        loc2 = self.get_location_data(name2)
+
+        # Ensure location 1 was found properly
+        if loc1 is None:
+            return False, "First location could not be found"
+        # Ensure location 2 was found properly
+        if loc2 is None:
+            return False, "Second location could not be found"
+
+        # Grabbing the x and y of both locations and putting them in tuples for ease of use
+        p1 = (loc1["coords"]["x"], loc1["coords"]["y"])
+        p2 = (loc2["coords"]["x"], loc2["coords"]["y"])
+
+        print("p1 - {}".format(p1))
+        print("p2 - {}".format(p2))
+
+        # Calculate the distance between the two points
+        distance = math.sqrt( ((p1[0]-p2[0])**2)+((p1[1]-p2[1])**2) )
+
+        print("Calculated distance: {}".format(distance))
+
+        return True, distance
+    
+    # Function to create a distance embed tile
+    def create_distance_embed(self, name1, name2, distance):
+        embed = discord.Embed(
+            title = "Distance Summary",
+            description = "Distance between locations '{}' and '{}'.".format(name1, name2),
+            color = discord.Color.green()
+        )
+
+        # Distance
+        embed.add_field(name="Distance", value="{:.0f} blocks".format(distance), inline=False)
+
+        # Time to reach by walking
+        embed.add_field(name="Walk time", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["player"]["walk"]), inline=False)
+
+        # Time to reach by running
+        embed.add_field(name="Running time", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["player"]["run"]), inline=False)
+
+        # Time to reach by horse
+        embed.add_field(name="Average time by horse", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["horse"]["walk"]), inline=False)
 
         return embed

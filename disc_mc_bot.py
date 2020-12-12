@@ -63,7 +63,7 @@ async def purge(ctx, num=1):
 
 
 # Command to add new location
-@client.command(aliases = ["save", "s"])
+@client.command(aliases = ["save", "sv"])
 async def save_coords(ctx, name, x, y, z=None, desc=None):
     """Bot Command
 
@@ -124,6 +124,36 @@ async def get_coords(ctx, search_token, query="name"):
 async def list_coords(ctx):
     await ctx.channel.send(embed=op.location_list_embed())
     return
+
+# Command to list locations based on search values
+@client.command(aliases = ["search", "sr"])
+async def search_coords(ctx, search_token, query="name"):
+    # Perform search of locations
+    found_locations = op.search_locations(search_token, query=query)
+
+    # Check if search was successful
+    if found_locations == False:
+        await ctx.channel.send("The query that you provided: {}, is unsupported. Supported queries are {}".format(query, ",".join(op.query_types)))
+        return
+
+    # Send back list of locations that were found via embeds
+    await ctx.channel.send(embed=op.location_list_embed(found_locations, search_token=search_token, query=query))
+    return
+
+# Command to compute the distance between two location points and return other intresting data
+@client.command(aliases = ["dist", "d"])
+async def distance(ctx, nameA, nameB):
+    # Calculate the distance
+    status, response = op.distance(nameA, nameB)
+
+    # Ensure calculation went smooth
+    if status == False:
+        await ctx.channel.send("Unable to calculate distance between the two locations.\nDue to: {}".format(response))
+
+    distance_embed = op.create_distance_embed(nameA, nameB, response)
+
+    # Send back the embed representation for distance
+    await ctx.channel.send(embed=distance_embed)
 
 # Command to test embed tile
 @client.command()

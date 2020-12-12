@@ -1,0 +1,1 @@
+worker: python disc_mc_bot.py

@@ -2,6 +2,7 @@ import discord
 import uuid
 import argparse
 import math
+import psycopg2
 
 class Operator:
     def __init__(self, local, config):
@@ -10,7 +11,7 @@ class Operator:
         self.locations = []
 
         # List of valid query vars for getting a location
-        self.query_types = ["name", "author"]
+        self.query_types = ["name", "author", "all"]
 
         # Dictionary to store metrics for things
         self.metrics =  {   "speed" : 
@@ -27,7 +28,7 @@ class Operator:
                         }
 
     # Function to add location data to a list or to a database
-    def add_location(self, name, user, x, y, z=None, desc=None, server=None):
+    def add_location(self, name, user, x, y, z=0, desc="N/A"):
         """Function to add a set of location data to the locations list of the database
         """
         # Saving to local memory in a list
@@ -38,8 +39,7 @@ class Operator:
                                 "name" : name,
                                 "author" : {"name" : user.name.split("#")[0], "discord_name" : user.name, "discord_id" : user.id},
                                 "coords" : { "x" : int(x), "y" : int(y), "z" : z },
-                                "desc" : desc, 
-                                "server" : server
+                                "desc" : desc
                             }
 
             # save the new location in the locations list
@@ -47,8 +47,27 @@ class Operator:
         
         # Saving to SQL database
         else:
-            pass
+            con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
 
+            # Create cursor to perform commands
+            cur = con.cursor()
+
+            cur.execute("INSERT INTO LOCATIONZ (ID,NAME,AUTHOR,DISCORD_NAME,DISCORD_ID,X_COORD,Y_COORD,Z_COORD,DESCRIPTION) VALUES ('{}', '{}', '{}', '{}', '{}', {}, {}, {}, '{}')".format(uuid.uuid4(), self.quote_escape(name), self.quote_escape(user.name.split("#")[0]), self.quote_escape(user.name), user.id, int(x), int(y), int(z), self.quote_escape(desc)))
+
+            con.commit()
+            con.close()
+
+# cur.execute('''CREATE TABLE LOCATIONZ(
+#     ID INT PRIMARY KEY NOT NULL,
+#     NAME TEXT NOT NULL,
+#     AUTHOR TEXT NOT NULL,
+#     DISCORD_NAME TEXT,
+#     DISCORD_ID INT,
+#     X_COORD INT NOT NULL,
+#     Y_COORD INT NOT NULL,
+#     Z_COORD INT,
+#     DESCRIPTION TEXT
+#     );''')
     # Function to verify required arguments of location data
     def verify_location_data(self, name, x, y):
         """Function to verify a set of location data
@@ -61,8 +80,8 @@ class Operator:
 
         # Attempts to cast x and y into ints to verify if they are ints
         try:
-            x_int = int(x)
-            y_int = int(y)
+            int(x)
+            int(y)
         except ValueError:
             print("Entered x or y value is not an integer... Returning false.")
             return False
@@ -76,27 +95,88 @@ class Operator:
             print("Unsupported query type {}, supported query types are {}".format(query, ",".join(self.query_types)))
             return False
 
-        # Placeholder for location data that we are looking for
-        searched_location_data = None
+        # Using local dict storage
+        if self.local:
+            # Placeholder for location data that we are looking for
+            searched_location_data = None
 
-        # Traverse all location entries to search for the proper location
-        for entry in self.locations:
-            # Case for serach by location name
-            if query == "name":
-                if search_token == entry["name"]:
-                    searched_location_data = entry
-                    break
+            # Traverse all location entries to search for the proper location
+            for entry in self.locations:
+                # Case for serach by location name
+                if query == "name":
+                    if search_token == entry["name"]:
+                        searched_location_data = entry
+                        break
 
-            # Case for search by users name
-            elif query == "author":
-                if search_token == entry["author"]["name"]:
-                    searched_location_data = entry
-                    break
+                # Case for search by users name
+                elif query == "author":
+                    if search_token == entry["author"]["name"]:
+                        searched_location_data = entry
+                        break
 
-        if searched_location_data is None:
-            print("WARN - No location data found for search of {}: {}".format(query, search_token))
+            if searched_location_data is None:
+                print("WARN - No location data found for search of {}: {}".format(query, search_token))
+        
+        # Using SQL DB
+        else:
+            # Connect to the database
+            con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
+            # Create cursor to perform commands
+            cur = con.cursor()
+
+            # Search for location with given name
+            cur.execute("SELECT name, author, discord_id, x_coord, y_coord, z_coord, description, id FROM LOCATIONZ WHERE name='{}'".format(self.quote_escape(search_token)))
+
+            # Fetch all results
+            results = cur.fetchall()
+            
+            # Check if results are empty, if so then no location was found
+            if len(results) == 0:
+                searched_location_data = None
+            elif len(results) > 1:
+                searched_location_data = False
+            else:
+                # Grab first item
+                first_res = results[0]
+
+                # Create new dict for the retrieved location
+                searched_location_data =  {
+                                    "name" : self.quote_escape(first_res[0], escape=False),
+                                    "author" : {"name" : self.quote_escape(first_res[1], escape=False), "id" : first_res[2]},
+                                    "coords" : { "x" : first_res[3], "y" : first_res[4], "z" : first_res[5] },
+                                    "desc" : self.quote_escape(first_res[6], escape=False),
+                                    "id" : first_res[7]
+                                }
+
+            # Close DB connection
+            con.close()
 
         return searched_location_data
+
+    # Function to remove a location entry based on the ID that it was given...
+    def remove_location_data(self, id):
+        # Local testing case
+        if self.local:
+            pass
+        
+        # Using PostgreSQL
+        else:
+            # Connect to the database
+            con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
+            # Create cursor to perform commands
+            cur = con.cursor()
+
+            # Delete location entry based on the ID
+            print("DELETE from LOCATIONZ where ID='{}'".format(id))
+            cur.execute("DELETE from LOCATIONZ where ID='{}'".format(id))
+
+            # Commit DB changes
+            con.commit()
+
+            # Close DB connection
+            con.close()
+        
+        return True
     
     # Function to search for locations based on search token and query type
     def search_locations(self, search_token, query="name"):
@@ -105,21 +185,61 @@ class Operator:
             print("Unsupported query type {}, supported query types are {}".format(query, ",".join(self.query_types)))
             return False
 
+        # List to hold all found results
         found_locations = []
 
-        # Traverse all location entries to search for the proper location
-        for entry in self.locations:
-            # Case for serach by location name
-            if query == "name":
-                # Soft search, check if search key appears in location name 
-                if search_token in entry["name"]:
-                    found_locations.append(entry)
+        # Local dictionary, dev mode
+        if self.local:
+            # Traverse all location entries to search for the proper location
+            for entry in self.locations:
+                # Case for serach by location name
+                if query == "name":
+                    # Soft search, check if search key appears in location name 
+                    if search_token in entry["name"]:
+                        found_locations.append(entry)
 
-            # Case for search by users name
+                # Case for search by users name
+                elif query == "author":
+                    # Strict search, search key must be identical to current author name
+                    if search_token == entry["author"]["name"]:
+                        found_locations.append(entry)
+        
+        # SQL DATABASE METHOD
+        else:
+            # Connect to the database
+            con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
+            # Create cursor to perform commands
+            cur = con.cursor()
+
+            if query == "name":
+                # Search for location with given name
+                cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ WHERE UPPER(name) LIKE UPPER('%{}%')".format(search_token))
             elif query == "author":
-                # Strict search, search key must be identical to current author name
-                if search_token == entry["author"]["name"]:
-                    found_locations.append(entry)
+                # Search for location with given name
+                cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ WHERE UPPER(author) LIKE UPPER('%{}%')".format(search_token))
+            elif query == "all":
+                print("retrieve all records")
+                # Retrieve all locations
+                cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ")
+
+            # Fetch all results
+            rows = cur.fetchall()
+
+            # Iterate over each search result, create dict and add to list
+            for row in rows:
+                # Create new dict for the retrieved location
+                searched_location_data =  {
+                                    "name" : self.quote_escape(row[0], escape=False),
+                                    "author" : {"name" : self.quote_escape(row[1], escape=False)},
+                                    "coords" : { "x" : row[2], "y" : row[3], "z" : row[4] },
+                                    "desc" : self.quote_escape(row[5], escape=False)
+                                }
+                # Append to list
+                found_locations.append(searched_location_data)
+
+            # Close DB connection
+            con.close()
+
         
         return found_locations
 
@@ -179,7 +299,11 @@ class Operator:
     def location_list_embed(self, collection=None, search_token=None, query=None):
         # If no location list was provided, use the entire location list
         if collection is None:
-            collection = self.locations
+            if self.local:
+                collection = self.locations
+            else:
+                collection = self.search_locations('', query="all")
+
             desc = "List of all registered locations..."
         else:
             desc = "Search results for {}: '{}'".format(query, search_token)
@@ -247,3 +371,14 @@ class Operator:
         embed.add_field(name="Average time by horse", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["horse"]["walk"]), inline=False)
 
         return embed
+    
+    # Function to convert single or double quotes in a string to it's escaped variant
+    def quote_escape(self, string, escape=True):
+        if escape:
+            # Replace all single quotes with a fake doubled quote (i.e.)
+            new_string = string.replace("\'", "''")
+        else:
+            new_string = string.replace("''", "\'")
+        
+        return new_string
+

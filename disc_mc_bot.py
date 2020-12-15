@@ -3,7 +3,6 @@ from discord.ext import commands
 from discord.utils import get
 import requests
 import json
-import pymongo # TODO: Convert into Postgres SQLite
 import os
 import argparse
 import uuid
@@ -35,7 +34,8 @@ client = commands.Bot(command_prefix = "$")
 #Checks if the bot is ready and if it is it prints Bot is ready
 @client.event
 async def on_ready():
-   print("Bot is ready")
+    await client.change_presence(status=discord.Status.online, activity=discord.Game('$help'))
+    print("Bot is ready")
 
 # Command to say hi when user sends command
 @client.command()
@@ -64,7 +64,7 @@ async def purge(ctx, num=1):
 
 # Command to add new location
 @client.command(aliases = ["save", "sv"])
-async def save_coords(ctx, name, x, y, z=None, desc=None):
+async def save_coords(ctx, name, x, y, z=0, desc="N/A"):
     """Bot Command
 
     Used to add the given location data to the collection of locations
@@ -100,24 +100,60 @@ async def save_coords(ctx, name, x, y, z=None, desc=None):
 
 # Command to add new location
 @client.command(aliases = ["get", "g"])
-async def get_coords(ctx, search_token, query="name"):
+async def get_coords(ctx, search_token):
     
     # Search for the location data
-    searched = op.get_location_data(search_token, query)
-
-    # Check if search was successful
-    if searched == False:
-        await ctx.channel.send("The query that you provided: {}, is unsupported. Supported queries are {}".format(query, ",".join(op.query_types)))
-        return
+    searched = op.get_location_data(search_token)
     
     # If no data was found
     if searched == None:
-        await ctx.channel.send("No location data was found under {}: {}, please verify that the name you entered is correct and try again.".format(query, search_token))
+        await ctx.channel.send("No location data was found under the name '{}', please verify that the name you entered is correct and try again.".format(search_token))
+        return
+    
+    # If multiple data was found...
+    if searched == False:
+        await ctx.channel.send("Multiple locations found under the name '{}'. Please be specific.".format(search_token))
         return
 
     # Means search found something, print it to user.
     await ctx.channel.send(embed=op.location_embed(searched))
     return
+
+# Command to remove registered coordinates based on name
+@client.command(aliases = ["remove", "r", "rem"])
+async def remove_coords(ctx, name):
+    
+    # Get the location that was desired to be removed
+    searched = op.get_location_data(name)
+    
+    # If no data was found, tell user
+    if searched == None:
+        await ctx.channel.send("No location data was found under the name '{}', please verify that the name you entered is correct and try again.".format(name))
+        return
+    
+    # If multiple data was found...
+    if searched == False:
+        await ctx.channel.send("Multiple locations found under the name '{}'. Please be specific.".format(search_token))
+        return
+
+    print(searched)
+
+    # Save instance of the user who sent the message
+    user = ctx.message.author
+
+    print("Current user id: {} | Location author id: {}".format(user.id, searched["author"]["id"]))
+
+    # Check to make sure that the user calling the remove is the owner of that location
+    if str(user.id) != searched["author"]["id"]:
+        await ctx.channel.send("You are not the author of this location entry. Only the author of a location can remove it. Nice try bud.")
+        return
+
+    # Means entry exists, user is the correct author, therefore remove it based on ID of location
+    status = op.remove_location_data(searched['id'])
+
+    if status is True:
+        await ctx.channel.send("Successfully removed location. Goodbye '{}'!".format(name))
+        return
 
 # Command to list all registered locations
 @client.command(aliases = ["list", "l"])

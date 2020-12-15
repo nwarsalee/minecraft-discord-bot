@@ -9,4 +9,4 @@ class Config:
 
     """
     DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN')
-    SQL_TOKEN = os.environ.get('SQL_DB_TOKEN')
+    DATABASE_URL = os.environ.get('DATABASE_URL')

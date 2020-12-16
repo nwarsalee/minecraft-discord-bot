@@ -29,7 +29,17 @@ class Operator:
 
     # Function to add location data to a list or to a database
     def add_location(self, name, user, x, y, z=0, desc="N/A"):
-        """Function to add a set of location data to the locations list of the database
+        """Function to add a set of location data to the database or list of locations (depending on run mode)
+
+        Args:
+            name (str): Name of the potential new location entry
+            x    (int): X coordinate of the potential location
+            y    (int): Y coordinate of the potential location
+            z    (int): Z coordinate of the potential location (default=0)
+            desc (str): Description text of the new location (default="N/A")
+
+        Returns:
+            bool: Returns whether the addition of the new location data was successful
         """
         # Saving to local memory in a list
         if self.local:
@@ -47,43 +57,47 @@ class Operator:
         
         # Saving to SQL database
         else:
-            con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
+            try:
+                # Connect to the PostgreSQL DB via the database URL stored in config
+                con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
+                # Create cursor to perform commands
+                cur = con.cursor()
+                # Execute PostgreSQL command to add new location data
+                cur.execute("INSERT INTO LOCATIONZ (ID,NAME,AUTHOR,DISCORD_NAME,DISCORD_ID,X_COORD,Y_COORD,Z_COORD,DESCRIPTION) VALUES ('{}', '{}', '{}', '{}', '{}', {}, {}, {}, '{}')".format(uuid.uuid4(), self.quote_escape(name), self.quote_escape(user.name.split("#")[0]), self.quote_escape(user.name), user.id, int(x), int(y), int(z), self.quote_escape(desc)))
+                # Commit changes to the database and close connection to database
+                con.commit()
+                con.close()
+            except Exception as e:
+                print("Error adding new entry due to: {}".format(e))
+                return False
+        
+        return True
 
-            # Create cursor to perform commands
-            cur = con.cursor()
-
-            cur.execute("INSERT INTO LOCATIONZ (ID,NAME,AUTHOR,DISCORD_NAME,DISCORD_ID,X_COORD,Y_COORD,Z_COORD,DESCRIPTION) VALUES ('{}', '{}', '{}', '{}', '{}', {}, {}, {}, '{}')".format(uuid.uuid4(), self.quote_escape(name), self.quote_escape(user.name.split("#")[0]), self.quote_escape(user.name), user.id, int(x), int(y), int(z), self.quote_escape(desc)))
-
-            con.commit()
-            con.close()
-
-# cur.execute('''CREATE TABLE LOCATIONZ(
-#     ID INT PRIMARY KEY NOT NULL,
-#     NAME TEXT NOT NULL,
-#     AUTHOR TEXT NOT NULL,
-#     DISCORD_NAME TEXT,
-#     DISCORD_ID INT,
-#     X_COORD INT NOT NULL,
-#     Y_COORD INT NOT NULL,
-#     Z_COORD INT,
-#     DESCRIPTION TEXT
-#     );''')
     # Function to verify required arguments of location data
-    def verify_location_data(self, name, x, y):
+    def verify_location_data(self, name, x, y, z, desc):
         """Function to verify a set of location data
 
-        Only verifies the most important info (i.e. name, and x, y coords)
+        Args:
+            name (str): Name of the potential new location entry
+            x    (int): X coordinate of the potential location
+            y    (int): Y coordinate of the potential location
+            z    (int): Z coordinate of the potential location
+            desc (str): Description text of the new location
+
+        Returns:
+            bool: Returns whether all provided location data is valid (return true if so)
         """
-        if name == None or x == None or y == None:
-            print("Name, x or y is set to None... Returning false.")
+        if name == None or x == None or y == None or z == None or desc == None:
+            print("Name, x, y, z or description is set to None... Returning false.")
             return False
 
         # Attempts to cast x and y into ints to verify if they are ints
         try:
             int(x)
             int(y)
+            int(z)
         except ValueError:
-            print("Entered x or y value is not an integer... Returning false.")
+            print("Entered x, y or z value is not an integer... Returning false.")
             return False
         else:
             return True
@@ -362,13 +376,13 @@ class Operator:
         embed.add_field(name="Distance", value="{:.0f} blocks".format(distance), inline=False)
 
         # Time to reach by walking
-        embed.add_field(name="Walk time", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["player"]["walk"]), inline=False)
+        embed.add_field(name=":person_walking: Walk time", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["player"]["walk"]), inline=False)
 
         # Time to reach by running
-        embed.add_field(name="Running time", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["player"]["run"]), inline=False)
+        embed.add_field(name=":woman_running: Running time", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["player"]["run"]), inline=False)
 
         # Time to reach by horse
-        embed.add_field(name="Average time by horse", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["horse"]["walk"]), inline=False)
+        embed.add_field(name=":racehorse: Average time by horse", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["horse"]["walk"]), inline=False)
 
         return embed
     

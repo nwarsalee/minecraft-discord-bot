@@ -11,42 +11,21 @@ import uuid
 from config import Config
 from operations import Operator
 
-# Create new config object for the tokens
+# Create new config object that stores all Tokens
 conf = Config()
 
-"""
-Dictionary to store location information
-NOTE: Locations will be stored in this manner
-{
-  "id"          : "en1oi231o3123-0",
-  "name"        : "My House",
-  "author"      : {"name" : "Warsna", "discord_name" : "Warsna#4581", "discord_id" : "4214214635"}
-  "coords"      : { "x" : 1414, "y" : 3123213, "z" : 1230 },
-  "description" : "Location of my house"
-}
-"""
-locations = []
+# ==================== BOT RELATED FUNCTIONS ========================================
 
 # Setting command character for issuing commands
 client = commands.Bot(command_prefix = "$")
-#client.remove_command('help')
+client.remove_command('help')
 
 #Checks if the bot is ready and if it is it prints Bot is ready
 @client.event
 async def on_ready():
+    # Change bot's status to include the command prefix and call to the help command
     await client.change_presence(status=discord.Status.online, activity=discord.Game('$help'))
     print("Bot is ready")
-
-# Command to say hi when user sends command
-@client.command()
-async def hi(ctx):
-    """Bot Command
-
-    Used to say hello back to the user who issued the command.
-    
-    """
-    user = ctx.message.author
-    await ctx.channel.send("Hello {}".format(user.mention))
 
 # Command to delete a specified amount of messages
 @client.command()
@@ -82,7 +61,7 @@ async def save_coords(ctx, name, x, y, z=0, desc="N/A"):
     :type desc: String
     """
     # Verify main data is valid
-    if not op.verify_location_data(name, x, y):
+    if not op.verify_location_data(name, x, y, z, desc):
         print("WARN - Entered location data not valid, informing user")
         await ctx.channel.send("The entered location data is invalid, please ensure you are entering in the proper types.")
         return
@@ -91,8 +70,6 @@ async def save_coords(ctx, name, x, y, z=0, desc="N/A"):
     user = ctx.message.author
 
     op.add_location(name, user, x, y, z, desc)
-
-    print(op.locations)
 
     print("OK - Successfully entered in location data.")
     await ctx.channel.send("New location saved under name '**{}**' located at (**{}**, **{}**)!".format(name, x, y))
@@ -191,22 +168,48 @@ async def distance(ctx, nameA, nameB):
     # Send back the embed representation for distance
     await ctx.channel.send(embed=distance_embed)
 
-# Command to test embed tile
-@client.command()
-async def embed(ctx):
+# Help command
+@client.command(aliases = ["h"])
+async def help(ctx):
+    """Function for help command
+
+    Creates an embed Discord object to present all available commands to the user
+
+    """
+    # Create new embed to add in help information
     embed = discord.Embed(
-        title = "My Embed",
-        description = "Testing the embed features in discord.py",
-        colour = discord.Color.green()
+        title = "Help Menu",
+        description = "List of commands for Minecraft-Bot\n\nNote: *For any entries that are text (i.e. words with spaces), you must enclose them with double quotes in order for them to be recognized.*\n\nCommand prefix: **$**",
+        color = discord.Color.green()
     )
 
-    embed.set_footer(text="My footer")
+    # Save command
+    embed.add_field(name="$save  <name>  <x>  <y>  [z]  [description]", value="> *Save a set of coordinates under the given name.*\n> *Shorthand: '$sv'*\n> *Note: The 'z' and 'description' fields are optional*\n", inline=False)
+    
+    # Get command
+    embed.add_field(name="$get  <name>", value="> *Get the coordinates of a location with the given name.*\n> *Shorthand: '$g'*", inline=False)
 
-    # Fields
-    embed.add_field(name="field1", value="field value", inline=False)
-    embed.add_field(name="field2", value="field value2", inline=True)
+    # Search command
+    embed.add_field(name="$search  <query>  [search_mode]", 
+                    value="> *Search for locations based on given query.*\n> *Shorthand: '$sr'*\n> *Note: 'search_mode' can be set to either by location name or by author name. Default is search by location name*", 
+                    inline=False)
 
+    # List command
+    embed.add_field(name="$list", value="> *List all saved locations, server-wide.*\n> *Shorthand: '$l'*", inline=False)
+
+    # Remove command
+    embed.add_field(name="$remove  <name>", value="> *Remove the location with the given name.*\n> *Shorthand: '$r', '$rem'*\n> *Note: Only the original author of the location can remove it.*", inline=False)
+
+    # Remove command
+    embed.add_field(name="$distance  <nameA>  <nameB>", value="> *Calculate the distance between locations A and B*\n> *Shorthand: '$d', '$dist'*", inline=False)
+
+    # Setting the footer
+    embed.set_footer(text="Bot created by Warsna#4581")
+
+    # Send back the embed representation for distance
     await ctx.channel.send(embed=embed)
+
+# ==================== SCRIPT RELATED ========================================
 
 # Function to set up the argparser
 def setup_argparse():
@@ -221,12 +224,12 @@ args = setup_argparse()
 
 if args.dev:
     print("Running in developer mode...")
-    USE_LOCAL=True
+    use_local =True
 else:
-    USE_LOCAL=False
+    use_local =False
 
 # Create Operator instance to provide functions
-op = Operator(USE_LOCAL, conf)
+op = Operator(use_local , conf)
 
 # Run the bot instance
 client.run(conf.DISCORD_TOKEN)

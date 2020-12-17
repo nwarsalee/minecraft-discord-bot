@@ -18,11 +18,17 @@ conf = Config()
 
 # Setting command character for issuing commands
 client = commands.Bot(command_prefix = "$")
+# Remove default help command and replace by custom one..
 client.remove_command('help')
 
 #Checks if the bot is ready and if it is it prints Bot is ready
 @client.event
 async def on_ready():
+    """Function to start the bot
+
+    Sets bot status to the help command and prints to stdout when the bot is ready.
+
+    """
     # Change bot's status to include the command prefix and call to the help command
     await client.change_presence(status=discord.Status.online, activity=discord.Game('$help'))
     print("Bot is ready")
@@ -44,21 +50,17 @@ async def purge(ctx, num=1):
 # Command to add new location
 @client.command(aliases = ["save", "sv"])
 async def save_coords(ctx, name, x, y, z=0, desc="N/A"):
-    """Bot Command
+    """Bot Command to add a new location and its set of data
 
-    Used to add the given location data to the collection of locations
-    Will inform user of successful addition or not.
+    Args:
+        name (str): Name of the new location
+        x    (int): X coordinate of the new location
+        x    (int): Y coordinate of the new location
+        x    (int): (Optional) Z coordinate of the new location
+        desc (str): (Optional) Description of the location
 
-    :param name: Name of the location
-    :param x: X coordinate of location
-    :param y: Y coordinate of location
-    :param z: (Optional) Z coordinate of location
-    :param desc: (Optional) Description of the location that was saved
-    :type name: String
-    :type x: Int
-    :type y: Int
-    :type z: Int
-    :type desc: String
+    Returns:
+        Nothing, but does send back a message to the text channel the command was sent to.
     """
     # Verify main data is valid
     if not op.verify_location_data(name, x, y, z, desc):
@@ -77,19 +79,26 @@ async def save_coords(ctx, name, x, y, z=0, desc="N/A"):
 
 # Command to add new location
 @client.command(aliases = ["get", "g"])
-async def get_coords(ctx, search_token):
-    
+async def get_coords(ctx, name):
+    """Bot command to get a location based on the given name
+
+    Args:
+        name (str): Name of the location to get
+
+    Returns:
+        Nothing, but does send an embedded object as a message to the text channel the command was sent to.
+    """
     # Search for the location data
-    searched = op.get_location_data(search_token)
+    searched = op.get_location_data(name)
     
     # If no data was found
     if searched == None:
-        await ctx.channel.send("No location data was found under the name '{}', please verify that the name you entered is correct and try again.".format(search_token))
+        await ctx.channel.send("No location data was found under the name '{}', please verify that the name you entered is correct and try again.".format(name))
         return
     
     # If multiple data was found...
     if searched == False:
-        await ctx.channel.send("Multiple locations found under the name '{}'. Please be specific.".format(search_token))
+        await ctx.channel.send("Multiple locations found under the name '{}'. Please be specific.".format(name))
         return
 
     # Means search found something, print it to user.
@@ -99,7 +108,14 @@ async def get_coords(ctx, search_token):
 # Command to remove registered coordinates based on name
 @client.command(aliases = ["remove", "r", "rem"])
 async def remove_coords(ctx, name):
+    """Bot command to remove a location based on its name
+
+    Args:
+        name (str): Name of the location to remove
     
+    Returns:
+        Nothing, but does send back a message to the text channel the command was sent to.
+    """
     # Get the location that was desired to be removed
     searched = op.get_location_data(name)
     
@@ -135,12 +151,26 @@ async def remove_coords(ctx, name):
 # Command to list all registered locations
 @client.command(aliases = ["list", "l"])
 async def list_coords(ctx):
+    """Bot command to list all current registered locations
+    
+    Returns:
+        Nothing, but does send an embedded object as a message to the text channel the command was sent to.
+    """
     await ctx.channel.send(embed=op.location_list_embed())
     return
 
 # Command to list locations based on search values
 @client.command(aliases = ["search", "sr"])
 async def search_coords(ctx, search_token, query="name"):
+    """Bot command to get a location based on the given name
+
+    Args:
+        search_token (str): What is being searched
+        query        (str): (Optional) How it is searching, i.e. by name or author (Default: 'name')
+
+    Returns:
+        Nothing, but does send an embedded object as a message to the text channel the command was sent to.
+    """
     # Perform search of locations
     found_locations = op.search_locations(search_token, query=query)
 
@@ -156,6 +186,15 @@ async def search_coords(ctx, search_token, query="name"):
 # Command to compute the distance between two location points and return other intresting data
 @client.command(aliases = ["dist", "d"])
 async def distance(ctx, nameA, nameB):
+    """Bot command to get a location based on the given name
+
+    Args:
+        nameA (str): Name of locationA, the first location to use in the distance calculation
+        nameB (str): Name of locationB, the second location to use in the distance calculation
+
+    Returns:
+        Nothing, but does send an embedded object as a message to the text channel the command was sent to.
+    """
     # Calculate the distance
     status, response = op.distance(nameA, nameB)
 
@@ -175,6 +214,8 @@ async def help(ctx):
 
     Creates an embed Discord object to present all available commands to the user
 
+    Returns:
+        Nothing, but does send an embedded object as a message to the text channel the command was sent to.
     """
     # Create new embed to add in help information
     embed = discord.Embed(
@@ -197,10 +238,13 @@ async def help(ctx):
     # List command
     embed.add_field(name="$list", value="> *List all saved locations, server-wide.*\n> *Shorthand: '$l'*", inline=False)
 
+    # Edit command
+    #embed.add_field(name="$edit  <entry_to_edit>  <name>", value="> *Edit a specific entry on the location with the given name.*\n> *Shorthand: '$e', '$ed'*\n> *Note: Only the original author of the location can edit it.*", inline=False)
+
     # Remove command
     embed.add_field(name="$remove  <name>", value="> *Remove the location with the given name.*\n> *Shorthand: '$r', '$rem'*\n> *Note: Only the original author of the location can remove it.*", inline=False)
 
-    # Remove command
+    # Distance command
     embed.add_field(name="$distance  <nameA>  <nameB>", value="> *Calculate the distance between locations A and B*\n> *Shorthand: '$d', '$dist'*", inline=False)
 
     # Setting the footer
@@ -213,6 +257,14 @@ async def help(ctx):
 
 # Function to set up the argparser
 def setup_argparse():
+    """Function to set up the argparser for the command line arguments
+
+    Supported arguments: 
+        --dev: To turn on developper mode and store locations in memory instead of a database
+
+    Returns:
+        Returns arguments parser object that contains the parsed args
+    """
     parser = argparse.ArgumentParser(description="Minecraft Discord Bot... by: Nabeel Warsalee")
 
     parser.add_argument('--dev', action="store_true", help="Activate dev mode")
@@ -228,7 +280,7 @@ if args.dev:
 else:
     use_local =False
 
-# Create Operator instance to provide functions
+# Create Operator instance to provide database operations and embed creation functions
 op = Operator(use_local , conf)
 
 # Run the bot instance

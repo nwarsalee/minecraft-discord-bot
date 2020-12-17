@@ -75,7 +75,7 @@ class Operator:
 
     # Function to verify required arguments of location data
     def verify_location_data(self, name, x, y, z, desc):
-        """Function to verify a set of location data
+        """Function to verify a set of location data from the database
 
         Args:
             name (str): Name of the potential new location entry
@@ -104,6 +104,18 @@ class Operator:
     
     # Function to get location data
     def get_location_data(self, search_token, query="name"):
+        """Function to retrieve a set of location data from the database (or from the dictionary if in local mode)
+
+        Searches based on either location name or by author name.
+        By default it searches based on location name unless specified for author name.
+
+        Args:
+            search_token (str): Name of what is being searched for
+            query        (str): Query method, i.e. search by location name or by author name (Default: location name)
+        
+        Returns:
+            dict or bool or None: Returns the location data in a dictionary/map format, returns False if it's an illegal query and returns None if no location was found 
+        """
         # Handle case of unsupported query data
         if query not in self.query_types:
             print("Unsupported query type {}, supported query types are {}".format(query, ",".join(self.query_types)))
@@ -147,6 +159,7 @@ class Operator:
             # Check if results are empty, if so then no location was found
             if len(results) == 0:
                 searched_location_data = None
+            # Check if we got more than one result, if so return False, something not right...
             elif len(results) > 1:
                 searched_location_data = False
             else:
@@ -169,31 +182,52 @@ class Operator:
 
     # Function to remove a location entry based on the ID that it was given...
     def remove_location_data(self, id):
+        """Function to remove a set of location data based on its ID within the database
+
+        Args:
+            id (str): ID of the set of location data to remove
+
+        Returns:
+            bool: Returns whether the removal was successful or not
+        """
         # Local testing case
         if self.local:
+            print("Oops, remove for local mode (i.e. --dev mode) is unsupported. Either implement it or deal with it.")
             pass
         
         # Using PostgreSQL
         else:
-            # Connect to the database
-            con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
-            # Create cursor to perform commands
-            cur = con.cursor()
-
-            # Delete location entry based on the ID
-            print("DELETE from LOCATIONZ where ID='{}'".format(id))
-            cur.execute("DELETE from LOCATIONZ where ID='{}'".format(id))
-
-            # Commit DB changes
-            con.commit()
-
-            # Close DB connection
-            con.close()
+            try:
+                # Connect to the database
+                con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
+                # Create cursor to perform commands
+                cur = con.cursor()
+                # Delete location entry based on the ID
+                cur.execute("DELETE from LOCATIONZ where ID='{}'".format(id))
+                # Commit DB changes
+                con.commit()
+                # Close DB connection
+                con.close()
+            except Exception as e:
+                print("ERROR while attempting to remove location with ID {} due to: {}".format(id, e))
+                return False
         
         return True
     
     # Function to search for locations based on search token and query type
     def search_locations(self, search_token, query="name"):
+        """Function to search for location data from the database based on a given search token (or from the dictionary if in local mode)
+
+        Searches based on either location name or by author name or to just retrieve all location data from the DB
+        By default it searches based on location name unless specified for author name or all.
+
+        Args:
+            search_token (str): Name of what is being searched for
+            query        (str): Query method, i.e. search by location name or by author name (Default: location name)
+        
+        Returns:
+            list or bool: Returns a list of location data in a dictionary/map format and returns False if it's an illegal query
+        """
         # Handle case of unsupported query data
         if query not in self.query_types:
             print("Unsupported query type {}, supported query types are {}".format(query, ",".join(self.query_types)))
@@ -220,25 +254,33 @@ class Operator:
         
         # SQL DATABASE METHOD
         else:
-            # Connect to the database
-            con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
-            # Create cursor to perform commands
-            cur = con.cursor()
+            try:
+                # Connect to the database
+                con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
+                # Create cursor to perform commands
+                cur = con.cursor()
 
-            if query == "name":
-                # Search for location with given name
-                cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ WHERE UPPER(name) LIKE UPPER('%{}%')".format(search_token))
-            elif query == "author":
-                # Search for location with given name
-                cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ WHERE UPPER(author) LIKE UPPER('%{}%')".format(search_token))
-            elif query == "all":
-                print("retrieve all records")
+                # Search for location based on location name
+                if query == "name":
+                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ WHERE UPPER(name) LIKE UPPER('%{}%')".format(search_token))
+                
+                # Search for location based on author name
+                elif query == "author":
+                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ WHERE UPPER(author) LIKE UPPER('%{}%')".format(search_token))
+                
                 # Retrieve all locations
-                cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ")
+                elif query == "all":
+                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ")
 
-            # Fetch all results
-            rows = cur.fetchall()
+                # Fetch all results
+                rows = cur.fetchall()
+                # Close DB connection
+                con.close()
 
+            except Exception as e:
+                print("ERROR: Unable to search for locations with key '{}' in mode '{}' due to: {}".format(search_token, query, e))
+                return False
+            
             # Iterate over each search result, create dict and add to list
             for row in rows:
                 # Create new dict for the retrieved location
@@ -251,14 +293,19 @@ class Operator:
                 # Append to list
                 found_locations.append(searched_location_data)
 
-            # Close DB connection
-            con.close()
-
         
         return found_locations
 
     # Function to create string of location data in a nice format
     def location_str(self, location):
+        """Function that creates a string representation for the given location data
+
+        Args:
+            location (dict): Location data that is to be stringified
+
+        Returns:
+            str: Returns the given location in a neat string format
+        """
         str = "Name: {}\n".format(location["name"])
         str += "Author: {}\n".format(location["author"]["name"])
         str += "Coordinates: ({}, {})\n".format(location["coords"]["x"], location["coords"]["y"])
@@ -274,6 +321,14 @@ class Operator:
 
     # Function to create embed object for the location's information
     def location_embed(self, location):
+        """Function to create a discord embed object for displaying data for a single location
+
+        Args:
+            location (dict): Location data in dict format
+
+        Returns:
+            embed: Returns a discord embed object of the location's information, nicely formatted to be sent to the text channel 
+        """
         embed = discord.Embed(
             title = location["name"],
             color = discord.Color.green()
@@ -293,6 +348,14 @@ class Operator:
 
     # Function to print out location data in a nice format
     def short_location_str(self, location):
+        """Function to create a short version of a string representation for a single location data
+        
+        Args:
+            location (dict): Location data in dict format
+
+        Returns:
+            str: Returns the short string to represent the location data
+        """
         # Format follows as so
         # <name_of_location> <author> (x, y)
 
@@ -302,6 +365,13 @@ class Operator:
 
     # Function to return a list of location data that is currently being stored
     def location_list(self):
+        """Function to print the entire list of locations currently being stored in this object's list of locations
+
+        Meant to be used while in dev mode...
+
+        Returns:
+            str: Returns string that represents the list of all locations in the list
+        """
         str = "List of Registered Locations...\n\n"
 
         for entry in self.locations:
@@ -311,14 +381,28 @@ class Operator:
     
     # Function to return a list of locations stored within an embed
     def location_list_embed(self, collection=None, search_token=None, query=None):
+        """Function to create a discord embed object for displaying a list of location data that is in the database
+
+        Will create a list for all entered location data if no list, search_token and query were not provided.
+
+        If a collection of locations was provided and search token and query were provided, it creates a list of locations based on the search result
+
+        Args:
+            collection   (list): List of location data that is pre provided (Default: None)
+            search_token  (str): Token to base the search for locations (Default: None)
+            query         (str): How to search for the locations, if searching (Default: None)
+
+        Returns:
+            embed: Returns a discord embed object of the location's information, nicely formatted to be sent to the text channel 
+        """
         # If no location list was provided, use the entire location list
         if collection is None:
             if self.local:
                 collection = self.locations
             else:
                 collection = self.search_locations('', query="all")
+                desc = "List of all registered locations..."
 
-            desc = "List of all registered locations..."
         else:
             desc = "Search results for {}: '{}'".format(query, search_token)
         
@@ -328,8 +412,14 @@ class Operator:
             color = discord.Color.green()
         )
 
+        # In case search for locations on DB side failed
+        if collection == False:
+            embed.add_field(name="Error retrieving locations...", value="...", inline=False)
+            return embed
+
         # Traverse each location entry and create new embed field to add into list
         for entry in collection:
+            # TODO: Add author name as well?
             embed.add_field(name=entry["name"], value="{}, {}".format(entry["coords"]["x"], entry["coords"]["y"]), inline=False)
 
         if len(collection) == 0:
@@ -339,7 +429,16 @@ class Operator:
 
     # Function to calculate the distance between two given location points
     def distance(self, name1, name2):
-        # Retrieve both locations
+        """Function to calculate the distance between two locations with given names
+
+        Args:
+            name1 (str): Name of the first location to consider in the calculation
+            name2 (str): Name of the second location to consider in the calculation
+
+        Returns:
+            bool, float or str: Returns whether the calculation was successful and the calculated distance or a message as to why the calculation failed
+        """
+        # Retrieve both locations from database
         loc1 = self.get_location_data(name1)
         loc2 = self.get_location_data(name2)
 
@@ -366,6 +465,16 @@ class Operator:
     
     # Function to create a distance embed tile
     def create_distance_embed(self, name1, name2, distance):
+        """Function to calculate the distance between two locations with given names
+
+        Args:
+            name1      (str): Name of the first location to consider in the calculation
+            name2      (str): Name of the second location to consider in the calculation
+            distance (float): The distance between the two locations
+
+        Returns:
+            embed: Returns a discord embed object that contains all the distance related information between the two points
+        """
         embed = discord.Embed(
             title = "Distance Summary",
             description = "Distance between locations '{}' and '{}'.".format(name1, name2),
@@ -388,6 +497,17 @@ class Operator:
     
     # Function to convert single or double quotes in a string to it's escaped variant
     def quote_escape(self, string, escape=True):
+        """Function to escape all single quotes in a string to make it valid for PostgreSQL use
+
+        It will also de-escape quotes for a string that was just recently extracted from a PostgreSQL table
+
+        Args:
+            string  (str): The string that is to have all its single quotes escaped (or de-escaped)
+            escape (bool): Flag for whether to escape the single quotes in the string or to de-escape (Default: True, i.e. escape single quotes)
+        
+        Returns:
+            str: Returns the string in its single quote escaped or de-escaped format.
+        """
         if escape:
             # Replace all single quotes with a fake doubled quote (i.e.)
             new_string = string.replace("\'", "''")

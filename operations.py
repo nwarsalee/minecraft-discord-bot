@@ -406,6 +406,8 @@ class Operator:
         else:
             desc = "Search results for {}: '{}'".format(query, search_token)
         
+        desc += "\n*x, y*"
+
         embed = discord.Embed(
             title = "Locations",
             description = desc,

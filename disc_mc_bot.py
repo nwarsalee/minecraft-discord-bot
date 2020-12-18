@@ -46,7 +46,6 @@ async def purge(ctx, num=1):
     await ctx.channel.purge(limit = num+1)
     print(f"{num} messages have been deleted from {ctx.channel}")
 
-
 # Command to add new location
 @client.command(aliases = ["save", "sv"])
 async def save_coords(ctx, name, x, y, z=0, desc="N/A"):
@@ -105,7 +104,7 @@ async def get_coords(ctx, name):
     await ctx.channel.send(embed=op.location_embed(searched))
     return
 
-# Command to remove registered coordinates based on name
+# Command to remove registered location based on name
 @client.command(aliases = ["remove", "r", "rem"])
 async def remove_coords(ctx, name):
     """Bot command to remove a location based on its name
@@ -126,7 +125,7 @@ async def remove_coords(ctx, name):
     
     # If multiple data was found...
     if searched == False:
-        await ctx.channel.send("Multiple locations found under the name '{}'. Please be specific.".format(search_token))
+        await ctx.channel.send("Multiple locations found under the name '{}'. Please be specific.".format(name))
         return
 
     print(searched)
@@ -146,6 +145,53 @@ async def remove_coords(ctx, name):
 
     if status is True:
         await ctx.channel.send("Successfully removed location. Goodbye '{}'!".format(name))
+        return
+
+# Command to edit registered location based on name
+@client.command(aliases = ["edit", "e", "ed"])
+async def edit_coords(ctx, name, field_to_edit, edit):
+    """Bot command to edit a specific field of a location based on its name
+
+    Args:
+        name          (str): Name of the location to remove
+        field_to_edit (str): Name of the field to edit, can only be one of the following 'name', 'x', 'y', 'z', 'desc'
+        edit          (str): The new value to edit the field with
+    
+    Returns:
+        Nothing, but does send back a message to the text channel the command was sent to.
+    """
+    # Get the location that was desired to be removed
+    searched = op.get_location_data(name)
+    
+    # If no data was found, tell user
+    if searched == None:
+        await ctx.channel.send("No location data was found under the name '{}', please verify that the name you entered is correct and try again.".format(name))
+        return
+    
+    # If multiple data was found...
+    if searched == False:
+        await ctx.channel.send("Multiple locations found under the name '{}'. Please be specific.".format(name))
+        return
+
+    if field_to_edit not in ['name', 'x', 'y', 'z', 'desc']:
+        await ctx.channel.send("'{}' is not a valid field to edit, please choose one of these fields: name, x, y, z, desc".format(field_to_edit))
+        return
+
+    # Save instance of the user who sent the message
+    user = ctx.message.author
+
+    print("Current user id: {} | Location author id: {}".format(user.id, searched["author"]["id"]))
+
+    # Check to make sure that the user calling the remove is the owner of that location
+    if str(user.id) != searched["author"]["id"]:
+        await ctx.channel.send("You are not the author of this location entry. Only the author of a location can edit it. Nice try bud.")
+        return
+
+    # Means entry exists, user is the correct author, therefore remove it based on ID of location
+    status = op.edit_location_data(searched['id'], field_to_edit, edit)
+
+    if status is True:
+        await ctx.channel.send("Successfully edited location '{}'!".format(name))
         return
 
 # Command to list all registered locations
@@ -239,7 +285,9 @@ async def help(ctx):
     embed.add_field(name="$list", value="> *List all saved locations, server-wide.*\n> *Shorthand: '$l'*", inline=False)
 
     # Edit command
-    #embed.add_field(name="$edit  <entry_to_edit>  <name>", value="> *Edit a specific entry on the location with the given name.*\n> *Shorthand: '$e', '$ed'*\n> *Note: Only the original author of the location can edit it.*", inline=False)
+    embed.add_field(name="$edit  <name>  <entry_to_edit>  <new_value>", 
+                    value="> *Edit a specific entry on the location with the given name.*\n> *Shorthand: '$e', '$ed'*\n> *Names of fields to edit: name, x, y, z, desc*\n> *Note: Only the original author of the location can edit it.*", 
+                    inline=False)
 
     # Remove command
     embed.add_field(name="$remove  <name>", value="> *Remove the location with the given name.*\n> *Shorthand: '$r', '$rem'*\n> *Note: Only the original author of the location can remove it.*", inline=False)

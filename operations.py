@@ -10,6 +10,9 @@ class Operator:
         self.config = config
         self.locations = []
 
+        # The table name that is used for locations
+        self.location_table_name = "LOCATIONZ"
+
         # List of valid query vars for getting a location
         self.query_types = ["name", "author", "all"]
 
@@ -26,6 +29,9 @@ class Operator:
                                                         }
                                         }
                         }
+
+        # Dictionary to map the field_to_edit parameter to the actual name of the column in the sql table
+        self.field_map = { 'name' : 'name', 'x' : 'x_coord', 'y' : 'y_coord', 'z' : 'z_coord', 'desc' : 'description'}
 
     # Function to add location data to a list or to a database
     def add_location(self, name, user, x, y, z=0, desc="N/A"):
@@ -63,7 +69,7 @@ class Operator:
                 # Create cursor to perform commands
                 cur = con.cursor()
                 # Execute PostgreSQL command to add new location data
-                cur.execute("INSERT INTO LOCATIONZ (ID,NAME,AUTHOR,DISCORD_NAME,DISCORD_ID,X_COORD,Y_COORD,Z_COORD,DESCRIPTION) VALUES ('{}', '{}', '{}', '{}', '{}', {}, {}, {}, '{}')".format(uuid.uuid4(), self.quote_escape(name), self.quote_escape(user.name.split("#")[0]), self.quote_escape(user.name), user.id, int(x), int(y), int(z), self.quote_escape(desc)))
+                cur.execute("INSERT INTO {} (ID,NAME,AUTHOR,DISCORD_NAME,DISCORD_ID,X_COORD,Y_COORD,Z_COORD,DESCRIPTION) VALUES ('{}', '{}', '{}', '{}', '{}', {}, {}, {}, '{}')".format(self.location_table_name, uuid.uuid4(), self.quote_escape(name), self.quote_escape(user.name.split("#")[0]), self.quote_escape(user.name), user.id, int(x), int(y), int(z), self.quote_escape(desc)))
                 # Commit changes to the database and close connection to database
                 con.commit()
                 con.close()
@@ -151,7 +157,7 @@ class Operator:
             cur = con.cursor()
 
             # Search for location with given name
-            cur.execute("SELECT name, author, discord_id, x_coord, y_coord, z_coord, description, id FROM LOCATIONZ WHERE name='{}'".format(self.quote_escape(search_token)))
+            cur.execute("SELECT name, author, discord_id, x_coord, y_coord, z_coord, description, id FROM {} WHERE name='{}'".format(self.location_table_name, self.quote_escape(search_token)))
 
             # Fetch all results
             results = cur.fetchall()
@@ -203,13 +209,51 @@ class Operator:
                 # Create cursor to perform commands
                 cur = con.cursor()
                 # Delete location entry based on the ID
-                cur.execute("DELETE from LOCATIONZ where ID='{}'".format(id))
+                cur.execute("DELETE from {} where ID='{}'".format(self.location_table_name, id))
                 # Commit DB changes
                 con.commit()
                 # Close DB connection
                 con.close()
             except Exception as e:
                 print("ERROR while attempting to remove location with ID {} due to: {}".format(id, e))
+                return False
+        
+        return True
+
+    # Function to remove a location entry based on the ID that it was given...
+    def edit_location_data(self, id, field_to_edit, edit):
+        """Function to edit a field within the location data based on its ID within the database
+
+        Args:
+            id            (str): ID of the set of location data to remove
+            field_to_edit (str): Name of the field to edit, can only be one of the following 'name', 'x', 'y', 'z', 'desc'
+            edit          (str): The new value to edit the field with
+
+        Returns:
+            bool: Returns whether the edit was successful or not
+        """
+
+        # Local testing case
+        if self.local:
+            print("Oops, remove for local mode (i.e. --dev mode) is unsupported. Either implement it or deal with it.")
+            pass
+        
+        # Using PostgreSQL
+        else:
+            try:
+                # Connect to the database
+                con = psycopg2.connect(self.config.DATABASE_URL, sslmode='require')
+                # Create cursor to perform commands
+                cur = con.cursor()
+                # Delete location entry based on the ID
+                print("UPDATE {} SET {}='{}' where ID='{}'".format(self.location_table_name, self.field_map[field_to_edit], edit, id))
+                cur.execute("UPDATE {} SET {}='{}' where ID='{}'".format(self.location_table_name, self.field_map[field_to_edit], edit, id))
+                # Commit DB changes
+                con.commit()
+                # Close DB connection
+                con.close()
+            except Exception as e:
+                print("ERROR while attempting to edit location with ID {} due to: {}".format(id, e))
                 return False
         
         return True
@@ -262,15 +306,15 @@ class Operator:
 
                 # Search for location based on location name
                 if query == "name":
-                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ WHERE UPPER(name) LIKE UPPER('%{}%')".format(search_token))
+                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM {} WHERE UPPER(name) LIKE UPPER('%{}%')".format(self.location_table_name, search_token))
                 
                 # Search for location based on author name
                 elif query == "author":
-                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ WHERE UPPER(author) LIKE UPPER('%{}%')".format(search_token))
+                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM {} WHERE UPPER(author) LIKE UPPER('%{}%')".format(self.location_table_name, search_token))
                 
                 # Retrieve all locations
                 elif query == "all":
-                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM LOCATIONZ")
+                    cur.execute("SELECT name, author, x_coord, y_coord, z_coord, description FROM {}".format(self.location_table_name))
 
                 # Fetch all results
                 rows = cur.fetchall()
@@ -406,7 +450,7 @@ class Operator:
         else:
             desc = "Search results for {}: '{}'".format(query, search_token)
         
-        desc += "\n*x, y*"
+        desc += "\n*(x, y) - author*"
 
         embed = discord.Embed(
             title = "Locations",
@@ -421,8 +465,7 @@ class Operator:
 
         # Traverse each location entry and create new embed field to add into list
         for entry in collection:
-            # TODO: Add author name as well?
-            embed.add_field(name=entry["name"], value="{}, {}".format(entry["coords"]["x"], entry["coords"]["y"]), inline=False)
+            embed.add_field(name=entry["name"], value="({}, {}) - {}".format(entry["coords"]["x"], entry["coords"]["y"], entry["author"]["name"]), inline=False)
 
         if len(collection) == 0:
             embed.add_field(name="No locations found...", value="...", inline=False)

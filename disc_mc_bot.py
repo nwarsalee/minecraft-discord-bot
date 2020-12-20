@@ -48,14 +48,14 @@ async def purge(ctx, num=1):
 
 # Command to add new location
 @client.command(aliases = ["save", "sv"])
-async def save_coords(ctx, name, x, y, z=0, desc="N/A"):
+async def save_coords(ctx, name, x, z, y, desc="N/A"):
     """Bot Command to add a new location and its set of data
 
     Args:
         name (str): Name of the new location
         x    (int): X coordinate of the new location
-        x    (int): Y coordinate of the new location
-        x    (int): (Optional) Z coordinate of the new location
+        z    (int): Z coordinate of the new location
+        y    (int): Y coordinate of the new location
         desc (str): (Optional) Description of the location
 
     Returns:
@@ -65,6 +65,14 @@ async def save_coords(ctx, name, x, y, z=0, desc="N/A"):
     if not op.verify_location_data(name, x, y, z, desc):
         print("WARN - Entered location data not valid, informing user")
         await ctx.channel.send("The entered location data is invalid, please ensure you are entering in the proper types.")
+        return
+
+    # Verify that another location was not already registered under same name
+    searched = op.get_location_data(name)
+
+    # If no data was found
+    if searched != None:
+        await ctx.channel.send("A location already exists under the name '{}'. Please choose a different name...".format(name))
         return
 
     # Save instance of the user who sent the message
@@ -136,7 +144,7 @@ async def remove_coords(ctx, name):
     print("Current user id: {} | Location author id: {}".format(user.id, searched["author"]["id"]))
 
     # Check to make sure that the user calling the remove is the owner of that location
-    if str(user.id) != searched["author"]["id"]:
+    if str(user.id) != searched["author"]["id"] and str(user.id) != conf.DISCORD_USER_ID:
         await ctx.channel.send("You are not the author of this location entry. Only the author of a location can remove it. Nice try bud.")
         return
 
@@ -183,7 +191,7 @@ async def edit_coords(ctx, name, field_to_edit, edit):
     print("Current user id: {} | Location author id: {}".format(user.id, searched["author"]["id"]))
 
     # Check to make sure that the user calling the remove is the owner of that location
-    if str(user.id) != searched["author"]["id"]:
+    if str(user.id) != searched["author"]["id"] and str(user.id) != conf.DISCORD_USER_ID:
         await ctx.channel.send("You are not the author of this location entry. Only the author of a location can edit it. Nice try bud.")
         return
 
@@ -253,6 +261,77 @@ async def distance(ctx, nameA, nameB):
     # Send back the embed representation for distance
     await ctx.channel.send(embed=distance_embed)
 
+# Command to compute the distance between two location points and return other intresting data
+@client.command(aliases = ["nav", "n"])
+async def navigate(ctx, fromLocation, toLocation):
+    """Bot command to navigate from the from location to the to location
+
+    Args:
+        fromLocation (str): Name of locationA, the first location to use in the navigation calculation
+        toLocation   (str): Name of locationB, the second location to use in the navigation calculation
+
+    Returns:
+        Nothing, but does send an embedded object as a message to the text channel the command was sent to.
+    """
+    # Calculate the distance
+    status, direction, angle = op.navigation_locations(fromLocation, toLocation)
+
+    # Ensure calculation went smooth
+    if status == False:
+        await ctx.channel.send("Unable to calculate directions between the two locations.\nDue to: {}".format(response))
+
+    # Grab both location points data (i.e. name, and other metadata)
+    pointA = op.get_location_data(fromLocation)
+    pointB = op.get_location_data(toLocation)
+
+    # Create embed to display navigation data
+    nav_embed = op.create_navigation_embed(pointA, pointB, direction, angle)
+
+    # Send back the embed representation for navigation
+    await ctx.channel.send(embed=nav_embed)
+
+# Command to compute the distance between two location points and return other intresting data
+@client.command(aliases = ["navigatec", "navc", "nc"])
+async def navigate_coords(ctx, x, y, toLocation):
+    """Bot command to navigate from the from location to the to location
+
+    Args:
+        x            (int): Int of the x coordinate to compute directions from
+        y            (int): Int of the y coordinate to compute directions from (NOTE: This is actually the z coordinate in minecraft, but internally in my head its y :P)
+        toLocation   (str): Name of locationB, the second location to use in the navigation calculation
+
+    Returns:
+        Nothing, but does send an embedded object as a message to the text channel the command was sent to.
+    """
+    # Check entered coords
+    valid = op.verify_location_data("null", x, y, 0, "N/A")
+    
+    if valid == False:
+        await ctx.channel.send("The provided coordinates are not valid, please enter valid coordinates...")
+        return
+
+    # Create new dict object for from location based on given coordinates
+    pointA =    {
+                        "name" : "(x={}, z={})".format(x, y),
+                        "coords" : { "x" : int(x), "y" : int(y) }
+                }
+
+    # Calculate the distance
+    status, direction, angle = op.navigation_locations_coords(pointA, toLocation)
+
+    # Ensure calculation went smooth
+    if status == False:
+        await ctx.channel.send("Unable to calculate directions between the two locations.\nDue to: {}".format(response))
+
+    # Grab to location point data (i.e. name, and other metadata)
+    pointB = op.get_location_data(toLocation)
+
+    # Create embed to display navigation data
+    nav_embed = op.create_navigation_embed(pointA, pointB, direction, angle)
+
+    # Send back the embed representation for navigation
+    await ctx.channel.send(embed=nav_embed)
+
 # Help command
 @client.command(aliases = ["h"])
 async def help(ctx):
@@ -271,7 +350,7 @@ async def help(ctx):
     )
 
     # Save command
-    embed.add_field(name="$save  <name>  <x>  <y>  [z]  [description]", value="> *Save a set of coordinates under the given name.*\n> *Shorthand: '$sv'*\n> *Note: The 'z' and 'description' fields are optional*\n", inline=False)
+    embed.add_field(name="$save  <name>  <x>  <y>  <z>  [description]", value="> *Save a set of coordinates under the given name.*\n> *Shorthand: '$sv'*\n> *Note: The 'description' field is optional*\n", inline=False)
     
     # Get command
     embed.add_field(name="$get  <name>", value="> *Get the coordinates of a location with the given name.*\n> *Shorthand: '$g'*", inline=False)
@@ -294,6 +373,12 @@ async def help(ctx):
 
     # Distance command
     embed.add_field(name="$distance  <nameA>  <nameB>", value="> *Calculate the distance between locations A and B*\n> *Shorthand: '$d', '$dist'*", inline=False)
+
+    # Navigation/Directions command
+    embed.add_field(name="$navigate  <nameA>  <nameB>", value="> *Calculate directions between locations A and B*\n> *Shorthand: '$nav', '$n'*", inline=False)
+
+    # Navigation/Directions for coordinates command
+    embed.add_field(name="$navigatec  <x>  <z>  <nameB>", value="> *Calculate directions between given coordinates and a known location*\n> *Shorthand: '$navc', '$nc'*", inline=False)
 
     # Setting the footer
     embed.set_footer(text="Bot created by Warsna#4581")

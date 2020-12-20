@@ -31,7 +31,7 @@ class Operator:
                         }
 
         # Dictionary to map the field_to_edit parameter to the actual name of the column in the sql table
-        self.field_map = { 'name' : 'name', 'x' : 'x_coord', 'y' : 'y_coord', 'z' : 'z_coord', 'desc' : 'description'}
+        self.field_map = { 'name' : 'name', 'x' : 'x_coord', 'y' : 'z_coord', 'z' : 'y_coord', 'desc' : 'description'}
 
     # Function to add location data to a list or to a database
     def add_location(self, name, user, x, y, z=0, desc="N/A"):
@@ -219,7 +219,7 @@ class Operator:
                 return False
         
         return True
-
+    
     # Function to remove a location entry based on the ID that it was given...
     def edit_location_data(self, id, field_to_edit, edit):
         """Function to edit a field within the location data based on its ID within the database
@@ -379,11 +379,7 @@ class Operator:
         )
 
         embed.add_field(name="Author", value=location["author"]["name"], inline=False)
-        embed.add_field(name="Coordinates", value="{}, {}".format(location["coords"]["x"], location["coords"]["y"]), inline=False)
-
-        # If z coord is specified, print it out
-        if location["coords"]["z"] is not None:
-            embed.add_field(name="Altitude", value=location["coords"]["z"], inline=False)
+        embed.add_field(name="Coordinates (x, y, z)", value="{}, {}, {}".format(location["coords"]["x"], location["coords"]["z"], location["coords"]["y"]), inline=False)
 
         if location["desc"] is not None:
             embed.add_field(name="Description", value=location["desc"], inline=False)
@@ -450,7 +446,7 @@ class Operator:
         else:
             desc = "Search results for {}: '{}'".format(query, search_token)
         
-        desc += "\n*(x, y) - author*"
+        desc += "\n*(x, y, z) - author*"
 
         embed = discord.Embed(
             title = "Locations",
@@ -465,7 +461,7 @@ class Operator:
 
         # Traverse each location entry and create new embed field to add into list
         for entry in collection:
-            embed.add_field(name=entry["name"], value="({}, {}) - {}".format(entry["coords"]["x"], entry["coords"]["y"], entry["author"]["name"]), inline=False)
+            embed.add_field(name=entry["name"], value="({}, {}, {}) - {}".format(entry["coords"]["x"], entry["coords"]["z"], entry["coords"]["y"], entry["author"]["name"]), inline=False)
 
         if len(collection) == 0:
             embed.add_field(name="No locations found...", value="...", inline=False)
@@ -507,6 +503,109 @@ class Operator:
         print("Calculated distance: {}".format(distance))
 
         return True, distance
+
+    def navigation(self, loc1, loc2):
+        """Function to calculate the directions between two locations with given names
+
+        Args:
+            pointA (dict): First location to consider in the calculation
+            pointB (dict): Second location to consider in the calculation
+
+        Returns:
+            bool, float or str: Returns whether the calculation was successful and the calculated angle/navigation or a message as to why the calculation failed
+        """
+
+        # Grabbing the x and y of both locations and putting them in tuples for ease of use
+        p1 = (loc1["coords"]["x"], loc1["coords"]["y"])
+        p2 = (loc2["coords"]["x"], loc2["coords"]["y"])
+
+        print("p1 - {}".format(p1))
+        print("p2 - {}".format(p2))
+
+        # Calculate deltas between x and y coords
+        x_delta = p1[0] - p2[0]
+        y_delta = p1[1] - p2[1]
+
+        print("delta x: {} | delta y: {}".format(x_delta, y_delta))
+
+        # Calculate angle
+        myAngle = int(math.atan((y_delta)/(x_delta)) * (180/math.pi))
+        print("arctan(O/A) = {} deg".format(myAngle))
+
+        # Case of negative angle return from arctan
+        if myAngle < 0:
+            myAngle = 360 + myAngle
+
+        # Create cardinal locations dict
+        cardinalDirs = { 0 : "E", 45 : "NE", 90 : "N", 135 : "NW", 180 : "W", 225 : "SW", 270 : "S", 315 : "SE", 360 : "E" }
+
+        # Calculate the remainder and true bearing
+        remainder = myAngle % 45
+
+        print("Angle: {} | remainder: {} | myAngle-rem = {} | myAngle+rem = {}".format(myAngle, remainder, myAngle - remainder, myAngle + remainder))
+        
+        direction = "NONE"
+
+        if (myAngle + remainder) in cardinalDirs:
+            print("subtraction")
+            direction = cardinalDirs[(myAngle - remainder)]
+        elif (myAngle - remainder) in cardinalDirs:
+            print("addition")
+            direction = cardinalDirs[(myAngle - remainder)]
+        else:
+            print("Angle {} deg and remainder {} deg don't sync up to a specific direction...".format(myAngle, remainder))
+
+        return True, direction, myAngle
+
+    def navigation_locations(self, pointA, pointB):
+        """Function to calculate the directions between two locations with given names
+
+        Args:
+            pointA (str): Name of the first location to consider in the calculation
+            pointB (str): Name of the second location to consider in the calculation
+
+        Returns:
+            bool, float or str: Returns whether the calculation was successful and the calculated angle/navigation or a message as to why the calculation failed
+        """
+        # Retrieve both locations from database
+        loc1 = self.get_location_data(pointA)
+        loc2 = self.get_location_data(pointB)
+
+        # Ensure location 1 was found properly
+        if loc1 is None:
+            return False, "First location could not be found"
+        # Ensure location 2 was found properly
+        if loc2 is None:
+            return False, "Second location could not be found"
+
+        angles = self.navigation(loc1, loc2)
+
+        return angles
+    
+    def navigation_locations_coords(self, pointA, pointB):
+        """Function to calculate the directions between a set of coordinate and a location
+
+        Args:
+            pointA (str): Name of the first location to consider in the calculation
+            pointB (str): Name of the second location to consider in the calculation
+
+        Returns:
+            bool, float or str: Returns whether the calculation was successful and the calculated angle/navigation or a message as to why the calculation failed
+        """
+        # Retrieve both locations from database
+        loc1 = pointA
+        loc2 = self.get_location_data(pointB)
+
+        # Ensure location 1 was found properly
+        if loc1 is None:
+            return False, "First location could not be found"
+        # Ensure location 2 was found properly
+        if loc2 is None:
+            return False, "Second location could not be found"
+
+        angles = self.navigation(loc1, loc2)
+
+        return angles
     
     # Function to create a distance embed tile
     def create_distance_embed(self, name1, name2, distance):
@@ -537,6 +636,35 @@ class Operator:
 
         # Time to reach by horse
         embed.add_field(name=":racehorse: Average time by horse", value="~{:.1f} seconds".format(distance/self.metrics["speed"]["horse"]["walk"]), inline=False)
+
+        return embed
+
+    # Function to create a distance embed tile
+    def create_navigation_embed(self, pointA, pointB, direction, angle):
+        """Function to display the directions between two locations
+
+        Args:
+            name1      (str): Name of the first location to consider in the calculation
+            name2      (str): Name of the second location to consider in the calculation
+            distance (float): The distance between the two locations
+
+        Returns:
+            embed: Returns a discord embed object that contains all the distance related information between the two points
+        """
+        embed = discord.Embed(
+            title = "Navigation Summary",
+            description = "Directions to navigate from '{}' to '{}'".format(pointA['name'], pointB['name']),
+            color = discord.Color.green()
+        )
+
+        # Dictionary to convert shorthand cardinal name to the full one
+        expand_card_dir = {"N" : "North", "S" : "South", "E" : "East", "W" : "West", "NW" : "North West", "NE" : "North East", "SW" : "Sout West", "SE" : "Sout East",}
+
+        # Distance
+        embed.add_field(name=":compass: Direction", value="{} ({})".format(expand_card_dir[direction], direction), inline=False)
+
+        # Angle
+        embed.add_field(name="Exact Angle (East is 0°, North 90°, etc...)", value="{}°".format(angle), inline=False)
 
         return embed
     

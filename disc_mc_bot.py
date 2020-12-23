@@ -278,7 +278,8 @@ async def navigate(ctx, fromLocation, toLocation):
 
     # Ensure calculation went smooth
     if status == False:
-        await ctx.channel.send("Unable to calculate directions between the two locations.\nDue to: {}".format(response))
+        await ctx.channel.send("Unable to calculate directions between the two locations.\nDue to: {}".format(direction))
+        return
 
     # Grab both location points data (i.e. name, and other metadata)
     pointA = op.get_location_data(fromLocation)
@@ -306,6 +307,7 @@ async def navigate_coords(ctx, x, y, toLocation):
     # Check entered coords
     valid = op.verify_location_data("null", x, y, 0, "N/A")
     
+    # Ensure entered arguments are valid
     if valid == False:
         await ctx.channel.send("The provided coordinates are not valid, please enter valid coordinates...")
         return
@@ -321,7 +323,7 @@ async def navigate_coords(ctx, x, y, toLocation):
 
     # Ensure calculation went smooth
     if status == False:
-        await ctx.channel.send("Unable to calculate directions between the two locations.\nDue to: {}".format(response))
+        await ctx.channel.send("Unable to calculate directions between the two locations.".format(direction))
 
     # Grab to location point data (i.e. name, and other metadata)
     pointB = op.get_location_data(toLocation)

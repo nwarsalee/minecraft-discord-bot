@@ -523,18 +523,71 @@ class Operator:
         print("p2 - {}".format(p2))
 
         # Calculate deltas between x and y coords
-        x_delta = p1[0] - p2[0]
-        y_delta = p1[1] - p2[1]
+        x_delta = abs(p1[0] - p2[0])
+        y_delta = abs(p1[1] - p2[1])
 
         print("delta x: {} | delta y: {}".format(x_delta, y_delta))
 
-        # Calculate angle
-        myAngle = int(math.atan((y_delta)/(x_delta)) * (180/math.pi))
+        if x_delta == 0 or y_delta == 0:
+            print("special case, either delta x or delta y is 0, set angle default to 0")
+            myAngle = 0
+        else:
+            # Calculate angle
+            myAngle = int(math.atan((y_delta)/(x_delta)) * (180/math.pi))
+
         print("arctan(O/A) = {} deg".format(myAngle))
 
-        # Case of negative angle return from arctan
-        if myAngle < 0:
-            myAngle = 360 + myAngle
+        # Determine which quadrant p2 was located int
+        x_dir = p2[0] - p1[0]
+        y_dir = p2[1] - p1[1]
+
+        print("x dir = {} | y dir = {}".format(x_dir, y_dir))
+        
+        # The offset to add onto the calculated angle such that it falls into the corrrect quadrant (start off at 0 deg)
+        offset = 0
+
+        # Qudrant 1 case (ALL sin, cos, tan positive)
+        if x_dir > 0 and y_dir > 0:
+            offset += 0
+        
+        # Qudrant 2 case (ONLY SIN positive)
+        elif x_dir < 0 and y_dir > 0:
+            offset += 90
+
+        # Qudrant 3 case (ONLY TAN positive)
+        elif x_dir < 0 and y_dir < 0:
+            offset += 180
+
+        # Qudrant 3 case (ONLY TAN positive)
+        elif x_dir > 0 and y_dir < 0:
+            offset += 270
+
+        # Special cases where the direction is neutral for either x or y direction
+        elif x_dir == 0 or y_dir == 0:
+            if x_dir == 0 and y_dir == 0:
+                print("WARN - p1 and p2 are the same coordinate...")
+                return False, "Same coordinates", 0
+            elif x_dir == 0:
+                if y_dir > 0:
+                    offset = 90
+                else:
+                    offset = 270
+            elif y_dir == 0:
+                if x_dir > 0:
+                    offset = 0
+                else:
+                    offset = 180
+            else:
+                print("ERROR - Something unexpected happened... xdir = {} , ydir = {}".format(x_dir, y_dir))
+                return False, "Oops idk...", 0
+        
+        # Unknown case... :/
+        else:
+                print("ERROR - Something unexpected happened... xdir = {} , ydir = {}".format(x_dir, y_dir))
+                return False, "Oops idk...", 0
+
+        # Add the offset to modify the angle to point to the correct quadrant
+        myAngle += offset
 
         # Create cardinal locations dict
         cardinalDirs = { 0 : "E", 45 : "NE", 90 : "N", 135 : "NW", 180 : "W", 225 : "SW", 270 : "S", 315 : "SE", 360 : "E" }
@@ -546,14 +599,23 @@ class Operator:
         
         direction = "NONE"
 
-        if (myAngle + remainder) in cardinalDirs:
-            print("subtraction")
-            direction = cardinalDirs[(myAngle - remainder)]
-        elif (myAngle - remainder) in cardinalDirs:
-            print("addition")
-            direction = cardinalDirs[(myAngle - remainder)]
-        else:
-            print("Angle {} deg and remainder {} deg don't sync up to a specific direction...".format(myAngle, remainder))
+        # Iterate over each quadrant for determining the cardinal direciton.
+        for i in range(0, 271, 90):
+            # Set up angle boundaries for comparison
+            base = i
+            middle = i+45
+            end = i+90
+            rad = 22.5
+
+            # Determine which cardinal direction angle coresponds to
+            if myAngle >= base and myAngle < middle - rad:
+                direction = cardinalDirs[base]
+            
+            elif myAngle >= (middle - rad) and myAngle <= (middle + rad):
+                direction = cardinalDirs[middle]
+
+            elif myAngle > (middle + rad) and myAngle <= end:
+                direction = cardinalDirs[end]
 
         return True, direction, myAngle
 
@@ -573,11 +635,12 @@ class Operator:
 
         # Ensure location 1 was found properly
         if loc1 is None:
-            return False, "First location could not be found"
+            return False, "First location could not be found", 0
         # Ensure location 2 was found properly
         if loc2 is None:
-            return False, "Second location could not be found"
+            return False, "Second location could not be found", 0
 
+        # Perform direction calculation
         angles = self.navigation(loc1, loc2)
 
         return angles
@@ -658,7 +721,7 @@ class Operator:
         )
 
         # Dictionary to convert shorthand cardinal name to the full one
-        expand_card_dir = {"N" : "North", "S" : "South", "E" : "East", "W" : "West", "NW" : "North West", "NE" : "North East", "SW" : "Sout West", "SE" : "Sout East",}
+        expand_card_dir = {"N" : "North", "S" : "South", "E" : "East", "W" : "West", "NW" : "North West", "NE" : "North East", "SW" : "South West", "SE" : "South East",}
 
         # Distance
         embed.add_field(name=":compass: Direction", value="{} ({})".format(expand_card_dir[direction], direction), inline=False)
